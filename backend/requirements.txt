@@ -10,3 +10,4 @@ httpx==0.28.1
 anyio==4.13.0
 starlette==1.0.0
 requests
+numpy
