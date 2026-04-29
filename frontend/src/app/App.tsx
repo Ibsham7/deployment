@@ -6,8 +6,10 @@ import { SimulatorView, SimulatorRequest } from "./components/SimulatorView";
 import { ResultsView, InferenceResult } from "./components/ResultsView";
 import { QueueView } from "./components/QueueView";
 import { DriftView } from "./components/DriftView";
+import { SplashScreen } from "./components/SplashScreen";
 
 export default function App() {
+  const [splashDone, setSplashDone] = useState(false);
   const [view, setView] = useState<ViewKey>("simulator");
   const [request, setRequest] = useState<SimulatorRequest | null>(null);
   const [result, setResult] = useState<InferenceResult | null>(null);
@@ -23,6 +25,8 @@ export default function App() {
       className="min-h-screen text-[#F9FAFB] relative overflow-hidden"
       style={{ fontFamily: "Inter, system-ui, -apple-system, sans-serif", backgroundColor: "#111827" }}
     >
+      {!splashDone && <SplashScreen onComplete={() => setSplashDone(true)} />}
+
       <Toaster
         position="bottom-right"
         theme="dark"
