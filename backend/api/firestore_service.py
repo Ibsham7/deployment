@@ -113,13 +113,22 @@ def get_firestore_client() -> tuple[Optional[Any], Optional[str]]:
                 # Handle raw keys in .env (removing commas, quotes, and fixing newlines)
                 def clean_env(key: str, default: str = "") -> str:
                     val = os.getenv(key, default)
-                    return val.rstrip(",").strip('"').strip("'")
+                    return val.rstrip(",").strip('"').strip("'").strip()
+                
+                # Robust private key parsing
+                raw_pk = clean_env("private_key")
+                # If there are literal '\n' characters, convert them to real newlines
+                pk = raw_pk.replace("\\n", "\n")
+                # Remove any stray commas at the end again just in case
+                pk = pk.rstrip(",")
+                # Ensure it ends cleanly
+                pk = pk.strip()
                 
                 cred_data = {
                     "type": clean_env("type", "service_account"),
                     "project_id": clean_env("project_id"),
                     "private_key_id": clean_env("private_key_id"),
-                    "private_key": clean_env("private_key").replace("\\n", "\n"),
+                    "private_key": pk,
                     "client_email": clean_env("client_email"),
                     "client_id": clean_env("client_id"),
                     "auth_uri": clean_env("auth_uri", "https://accounts.google.com/o/oauth2/auth"),
