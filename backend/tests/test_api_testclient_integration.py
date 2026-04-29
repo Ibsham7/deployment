@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import requests
 
 import pytest
 from fastapi.testclient import TestClient
@@ -6,8 +7,22 @@ from fastapi.testclient import TestClient
 from api import main
 
 
+class MockResponse:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.exceptions.HTTPError(f"{self.status_code} Error")
+
+    def json(self):
+        return {"status": "ok"}
+
+
 @pytest.fixture(autouse=True)
 def reset_app_state(monkeypatch):
+    monkeypatch.setenv("HF_SPACE_URL", "http://test")
+    monkeypatch.setattr(requests, "get", lambda url, timeout: MockResponse(200))
     original_models = dict(main.MODELS)
     original_firestore_state = dict(main.FIRESTORE_STATE)
     original_lifespan_context = main.app.router.lifespan_context

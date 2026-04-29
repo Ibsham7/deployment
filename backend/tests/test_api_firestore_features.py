@@ -1,4 +1,6 @@
 import asyncio
+import requests
+import os
 
 import pytest
 from fastapi import HTTPException, status
@@ -6,9 +8,17 @@ from fastapi import HTTPException, status
 from api import main
 from api.schemas import HumanLabelRequest, ReviewRequest
 
+class MockResponse:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+    def json(self):
+        return {"status": "ok"}
 
 @pytest.fixture(autouse=True)
 def restore_global_state(monkeypatch):
+    monkeypatch.setenv("HF_SPACE_URL", "http://test")
+    monkeypatch.setattr(requests, "get", lambda url, timeout: MockResponse(200))
     original_models = dict(main.MODELS)
     original_firestore_state = dict(main.FIRESTORE_STATE)
     monkeypatch.delenv("FIRESTORE_ENABLED", raising=False)
@@ -39,10 +49,10 @@ def test_health_reports_firestore_error_when_models_loaded_but_firestore_disconn
 
     resp = _run(main.health())
 
-    assert resp.status == "ok"
-    assert resp.models_loaded is True
-    assert resp.firestore_connected is False
-    assert resp.detail == "credentials missing"
+    assert resp["status"] == "ok"
+    assert resp["models_loaded"] is True
+    assert resp["firestore_connected"] is False
+    assert resp["detail"] == "credentials missing"
 
 
 def test_require_firestore_client_raises_when_disconnected():
