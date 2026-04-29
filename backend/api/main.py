@@ -26,6 +26,8 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+import requests
 
 # Ensure project root is on the path so `router` can be imported when the
 # module is launched from any working directory.
@@ -121,6 +123,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Enable CORS for the frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for the demo
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # ---------------------------------------------------------------------------
 # Exception handlers
@@ -147,12 +158,11 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 # ---------------------------------------------------------------------------
 @app.get(
     "/health",
-    response_model=HealthResponse,
     tags=["Health"],
     summary="Service health check",
     description="Returns whether the API is running and all models are loaded.",
 )
-async def health() -> HealthResponse:
+async def health():
     loaded = MODELS.get("loaded", False)
     firestore_connected = bool(FIRESTORE_STATE.get("connected"))
     firestore_enabled = os.getenv("FIRESTORE_ENABLED", "true").strip().lower() in {
@@ -163,12 +173,28 @@ async def health() -> HealthResponse:
     if loaded and firestore_enabled and not firestore_connected:
         detail = FIRESTORE_STATE.get("error") or "Firestore is not connected."
 
-    return HealthResponse(
-        status="ok" if loaded else "degraded",
-        models_loaded=loaded,
-        detail=detail,
-        firestore_connected=firestore_connected,
-    )
+    # Check Hugging Face Space Status
+    hf_status = "unknown"
+    hf_url = os.getenv("HF_SPACE_URL")
+    if hf_url:
+        try:
+            resp = requests.get(f"{hf_url}/health", timeout=5)
+            if resp.status_code == 200:
+                hf_status = resp.json().get("status", "unknown")
+            else:
+                hf_status = f"error_{resp.status_code}"
+        except Exception:
+            hf_status = "unreachable"
+
+    overall_status = "ok" if (loaded and hf_status == "ok") else "loading"
+
+    return {
+        "status": overall_status,
+        "models_loaded": loaded,
+        "detail": detail,
+        "firestore_connected": firestore_connected,
+        "hf_status": hf_status
+    }
 
 
 def _require_firestore_client() -> Any:

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Zap, Check } from "lucide-react";
+import { checkHealth } from "../lib/api";
 
 const INIT_STAGES: { label: string; duration: number }[] = [
   { label: "Connecting to inference cluster", duration: 700 },
@@ -33,7 +34,24 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
       for (let i = 0; i < INIT_STAGES.length; i++) {
         if (cancelled) return;
         setStageIndex(i);
-        await sleep(INIT_STAGES[i].duration);
+
+        // For the last stage, we wait for the backend to actually report "ok"
+        if (i === INIT_STAGES.length - 1) {
+          let isReady = false;
+          while (!isReady && !cancelled) {
+            const health = await checkHealth();
+            if (health && health.status === "ok") {
+              isReady = true;
+            } else {
+              // Wait 2 seconds before polling again
+              await sleep(2000);
+            }
+          }
+          if (cancelled) return;
+        } else {
+          await sleep(INIT_STAGES[i].duration);
+        }
+
         if (cancelled) return;
         setCompletedStages(prev => [...prev, i]);
         elapsed += INIT_STAGES[i].duration;
