@@ -1,0 +1,30 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount trained models locally (not baked into Docker image)
+      - ./models/saved:/app/models/saved:ro
+      # Mount Firebase credentials (read-only)
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+    environment:
+      # Set to "false" to disable Firestore and run fully offline
+      FIRESTORE_ENABLED: "${FIRESTORE_ENABLED:-true}"
+
+      # Firebase credentials: use mounted file
+      FIREBASE_CREDENTIALS_PATH: "/app/firebase-service-account.json"
+
+      # Optional tuning
+      MODEL_A_SUPPORTED_LANGUAGES: "${MODEL_A_SUPPORTED_LANGUAGES:-en,de,es,fr}"
+      MODEL_C_CATEGORIES: "${MODEL_C_CATEGORIES:-book,digital_ebook_purchase,electronics,pc}"
+      MODEL_B_ESCALATION_CATEGORIES: "${MODEL_B_ESCALATION_CATEGORIES:-software,video_games,music,movies}"
+
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

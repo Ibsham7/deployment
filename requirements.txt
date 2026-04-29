@@ -1,0 +1,12 @@
+fastapi==0.136.0
+uvicorn==0.46.0
+python-dotenv==1.2.2
+pydantic==2.13.3
+firebase-admin==7.4.0
+google-cloud-firestore==2.27.0
+google-auth==2.49.2
+locust==2.43.4
+httpx==0.28.1
+anyio==4.13.0
+starlette==1.0.0
+requests
