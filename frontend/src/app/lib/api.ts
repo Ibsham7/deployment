@@ -99,6 +99,17 @@ export async function submitQueueReview(payload: QueueSubmission): Promise<{ ok:
   return { ok: true, message: `Review resolved successfully with status: ${data.status}` };
 }
 
+export async function getQueueItems(): Promise<any[]> {
+  const res = await fetch(`${BASE_URL}/human-review/queue?status=pending`);
+  if (!res.ok) {
+    if (res.status === 404 || res.status === 500 || res.status === 503) {
+      return [];
+    }
+    throw new Error(`API Error: ${res.statusText}`);
+  }
+  return res.json();
+}
+
 export async function runDriftAnalysis(params: DriftRunParams): Promise<DriftRunResult> {
   // Pass query params for the GET/POST request (FastAPI uses Query parameters for this endpoint)
   const query = new URLSearchParams();
@@ -113,6 +124,17 @@ export async function runDriftAnalysis(params: DriftRunParams): Promise<DriftRun
     headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) {
+    throw new Error(`API Error: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function getLatestDrift(): Promise<DriftMetric[]> {
+  const res = await fetch(`${BASE_URL}/drift/latest`);
+  if (!res.ok) {
+    if (res.status === 404 || res.status === 500 || res.status === 503) {
+      return [];
+    }
     throw new Error(`API Error: ${res.statusText}`);
   }
   return res.json();

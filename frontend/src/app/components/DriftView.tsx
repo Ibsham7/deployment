@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Activity, RefreshCw, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Activity, RefreshCw, TrendingUp, TrendingDown, Loader2, Inbox } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -10,13 +10,18 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  ReferenceLine,
   Legend,
 } from "recharts";
 import { GlassCard, PageHeader, Label, fieldClass, Skeleton } from "./ui-bits";
-import { runDriftAnalysis, DriftMetric } from "../lib/api";
+import { runDriftAnalysis, getLatestDrift, DriftMetric } from "../lib/api";
 
-function statusOf(m: DriftMetric): "ok" | "warn" | "alert" {
+type ViewDriftMetric = DriftMetric & {
+  alert_threshold: number;
+  trend: { ts: string; value: number }[];
+  delta: number;
+};
+
+function statusOf(m: ViewDriftMetric): "ok" | "warn" | "alert" {
   if (m.metric_value >= m.alert_threshold) return "alert";
   if (m.metric_value >= m.warn_threshold) return "warn";
   return "ok";
@@ -58,73 +63,14 @@ const STATUS_STYLE = {
   },
 };
 
-const INITIAL_METRICS: DriftMetric[] = [
-  {
-    metric_name: "Confidence PSI",
-    metric_value: 0.15,
-    warn_threshold: 0.1,
-    alert_threshold: 0.25,
-    trend: [
-      { ts: "06:00", value: 0.06 },
-      { ts: "08:00", value: 0.08 },
-      { ts: "10:00", value: 0.07 },
-      { ts: "12:00", value: 0.09 },
-      { ts: "14:00", value: 0.11 },
-      { ts: "16:00", value: 0.13 },
-      { ts: "18:00", value: 0.15 },
-    ],
-    delta: 0.04,
-  },
-  {
-    metric_name: "Language Divergence",
-    metric_value: 0.04,
-    warn_threshold: 0.08,
-    alert_threshold: 0.15,
-    trend: [
-      { ts: "06:00", value: 0.05 },
-      { ts: "08:00", value: 0.04 },
-      { ts: "10:00", value: 0.05 },
-      { ts: "12:00", value: 0.04 },
-      { ts: "14:00", value: 0.03 },
-      { ts: "16:00", value: 0.04 },
-      { ts: "18:00", value: 0.04 },
-    ],
-    delta: -0.01,
-  },
-  {
-    metric_name: "Route Mix Shift",
-    metric_value: 0.21,
-    warn_threshold: 0.1,
-    alert_threshold: 0.2,
-    trend: [
-      { ts: "06:00", value: 0.08 },
-      { ts: "08:00", value: 0.10 },
-      { ts: "10:00", value: 0.13 },
-      { ts: "12:00", value: 0.15 },
-      { ts: "14:00", value: 0.18 },
-      { ts: "16:00", value: 0.20 },
-      { ts: "18:00", value: 0.21 },
-    ],
-    delta: 0.06,
-  },
-];
-
-const RUN_HISTORY = [
-  { id: "drift_1042", t: "2026-04-29 14:02", w: "24h / 7d", a: 0.15, b: 0.04, c: 0.21, s: "alert" },
-  { id: "drift_1041", t: "2026-04-29 12:00", w: "24h / 7d", a: 0.13, b: 0.05, c: 0.19, s: "warn" },
-  { id: "drift_1040", t: "2026-04-29 10:00", w: "24h / 7d", a: 0.11, b: 0.04, c: 0.16, s: "warn" },
-  { id: "drift_1039", t: "2026-04-29 08:00", w: "24h / 7d", a: 0.09, b: 0.03, c: 0.12, s: "warn" },
-  { id: "drift_1038", t: "2026-04-29 06:00", w: "24h / 7d", a: 0.08, b: 0.04, c: 0.10, s: "ok" },
-];
-
 // Build combined trend data for the multi-series chart
-function buildCombinedTrend(metrics: DriftMetric[]) {
-  if (!metrics.length) return [];
+function buildCombinedTrend(metrics: ViewDriftMetric[]) {
+  if (!metrics.length || !metrics[0].trend || !metrics[0].trend.length) return [];
   const trendLength = metrics[0].trend.length;
   return Array.from({ length: trendLength }, (_, i) => {
     const row: Record<string, any> = { ts: metrics[0].trend[i].ts };
     metrics.forEach(m => {
-      row[m.metric_name] = m.trend[i].value;
+      row[m.metric_name] = m.trend[i]?.value || 0;
     });
     return row;
   });
@@ -153,8 +99,33 @@ export function DriftView() {
   const [lookback, setLookback] = useState(24);
   const [baseline, setBaseline] = useState(7);
   const [running, setRunning] = useState(false);
-  const [metrics, setMetrics] = useState<DriftMetric[]>(INITIAL_METRICS);
-  const [lastRun, setLastRun] = useState("12 min ago");
+  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState<ViewDriftMetric[]>([]);
+  const [lastRun, setLastRun] = useState("N/A");
+  const [runHistory, setRunHistory] = useState<any[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const raw = await getLatestDrift();
+        if (!mounted) return;
+        const mapped = raw.map(m => ({
+          ...m,
+          alert_threshold: m.threshold,
+          trend: [],
+          delta: 0,
+        }));
+        setMetrics(mapped as ViewDriftMetric[]);
+      } catch (err) {
+        console.error("Failed to load drift", err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+    load();
+    return () => { mounted = false; };
+  }, []);
 
   const overall: "ok" | "warn" | "alert" = metrics.length
     ? metrics.some(m => statusOf(m) === "alert")
@@ -168,13 +139,29 @@ export function DriftView() {
 
   const run = async () => {
     setRunning(true);
-    setMetrics([]);
     try {
       const result = await runDriftAnalysis({ lookback_hours: lookback, baseline_days: baseline });
-      setMetrics(result.metrics);
+      const mapped = result.metrics.map((m: any) => ({
+        ...m,
+        alert_threshold: m.threshold,
+        trend: [],
+        delta: 0,
+      }));
+      setMetrics(mapped);
       setLastRun("just now");
+      
+      const newRun = {
+        id: "drift_run_" + Date.now().toString().slice(-4),
+        t: new Date().toLocaleString(),
+        w: `${lookback}h / ${baseline}d`,
+        a: result.metrics.find(m => m.metric_name.includes("Confidence"))?.metric_value || 0,
+        b: result.metrics.find(m => m.metric_name.includes("Language"))?.metric_value || 0,
+        c: result.metrics.find(m => m.metric_name.includes("Route"))?.metric_value || 0,
+        s: result.status,
+      };
+      setRunHistory(prev => [newRun, ...prev]);
     } catch {
-      setMetrics(INITIAL_METRICS);
+      // on fail, do not clear
     } finally {
       setRunning(false);
     }
@@ -237,7 +224,7 @@ export function DriftView() {
 
             <button
               onClick={run}
-              disabled={running}
+              disabled={running || loading}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-colors disabled:opacity-50"
               style={{
                 backgroundColor: "#059669",
@@ -261,7 +248,7 @@ export function DriftView() {
 
         {/* Metric cards */}
         <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
-          {running && [0,1,2].map(i => (
+          {(running || loading) && [0,1,2].map(i => (
             <GlassCard key={i} className="p-6">
               <Skeleton className="h-3 w-24 mb-4" />
               <Skeleton className="h-10 w-32 mb-3" />
@@ -269,12 +256,18 @@ export function DriftView() {
               <Skeleton className="h-20 w-full mt-4" />
             </GlassCard>
           ))}
-          {!running && metrics.map(m => <MetricCard key={m.metric_name} m={m} />)}
+          {!running && !loading && metrics.length === 0 && (
+            <div className="col-span-3 flex flex-col items-center justify-center py-16" style={{ border: "1px dashed #374151", borderRadius: "0.75rem", backgroundColor: "rgba(255,255,255,0.02)" }}>
+              <Inbox className="w-8 h-8 mb-3" style={{ color: "#4B5563" }} />
+              <div className="text-[14px] text-center" style={{ color: "#9CA3AF" }}>No data available. Run drift analysis to generate metrics.</div>
+            </div>
+          )}
+          {!running && !loading && metrics.map(m => <MetricCard key={m.metric_name} m={m} />)}
         </div>
       </div>
 
       {/* Combined trend chart */}
-      {!running && combinedTrend.length > 0 && (
+      {!running && !loading && combinedTrend.length > 0 && (
         <GlassCard className="p-6 mb-6">
           <div className="flex items-center justify-between mb-5">
             <div>
@@ -337,9 +330,9 @@ export function DriftView() {
         <div className="flex items-center justify-between mb-5">
           <div>
             <div className="text-[11px] tracking-wide uppercase mb-1" style={{ color: "#9CA3AF" }}>Recent Drift Runs</div>
-            <div className="text-[15px]" style={{ fontWeight: 500, color: "#F9FAFB" }}>Run history · last 7 days</div>
+            <div className="text-[15px]" style={{ fontWeight: 500, color: "#F9FAFB" }}>Run history · session</div>
           </div>
-          <span className="text-[12px]" style={{ color: "#6B7280" }}>Showing 5 of 142</span>
+          <span className="text-[12px]" style={{ color: "#6B7280" }}>Showing {runHistory.length}</span>
         </div>
 
         <div className="overflow-hidden rounded-xl" style={{ border: "1px solid #374151" }}>
@@ -356,42 +349,50 @@ export function DriftView() {
               </tr>
             </thead>
             <tbody>
-              {RUN_HISTORY.map(r => {
-                const s = STATUS_STYLE[r.s as "ok" | "warn" | "alert"];
-                return (
-                  <tr
-                    key={r.id}
-                    className="transition-colors"
-                    style={{ borderTop: "1px solid #374151" }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.02)"; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
-                  >
-                    <td className="px-4 py-3 font-mono" style={{ color: "#F9FAFB" }}>{r.id}</td>
-                    <td className="px-4 py-3 font-mono" style={{ color: "#9CA3AF" }}>{r.t}</td>
-                    <td className="px-4 py-3" style={{ color: "#9CA3AF" }}>{r.w}</td>
-                    <td className="px-4 py-3 tabular-nums" style={{ color: "#D1D5DB" }}>{r.a.toFixed(2)}</td>
-                    <td className="px-4 py-3 tabular-nums" style={{ color: "#D1D5DB" }}>{r.b.toFixed(2)}</td>
-                    <td className="px-4 py-3 tabular-nums" style={{ color: "#D1D5DB" }}>{r.c.toFixed(2)}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10.5px] tracking-wider"
-                        style={{
-                          backgroundColor: s.chipBg,
-                          color: s.chipText,
-                          border: `1px solid ${s.chipBorder}`,
-                          fontWeight: 600,
-                        }}
-                      >
+              {runHistory.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center">
+                    <div className="text-[13px]" style={{ color: "#6B7280" }}>No data available. Run drift analysis to populate history.</div>
+                  </td>
+                </tr>
+              ) : (
+                runHistory.map(r => {
+                  const s = STATUS_STYLE[r.s as "ok" | "warn" | "alert"] || STATUS_STYLE["ok"];
+                  return (
+                    <tr
+                      key={r.id}
+                      className="transition-colors"
+                      style={{ borderTop: "1px solid #374151" }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.02)"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                    >
+                      <td className="px-4 py-3 font-mono" style={{ color: "#F9FAFB" }}>{r.id}</td>
+                      <td className="px-4 py-3 font-mono" style={{ color: "#9CA3AF" }}>{r.t}</td>
+                      <td className="px-4 py-3" style={{ color: "#9CA3AF" }}>{r.w}</td>
+                      <td className="px-4 py-3 tabular-nums" style={{ color: "#D1D5DB" }}>{r.a.toFixed(2)}</td>
+                      <td className="px-4 py-3 tabular-nums" style={{ color: "#D1D5DB" }}>{r.b.toFixed(2)}</td>
+                      <td className="px-4 py-3 tabular-nums" style={{ color: "#D1D5DB" }}>{r.c.toFixed(2)}</td>
+                      <td className="px-4 py-3">
                         <span
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ backgroundColor: s.dot }}
-                        />
-                        {s.label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
+                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10.5px] tracking-wider"
+                          style={{
+                            backgroundColor: s.chipBg,
+                            color: s.chipText,
+                            border: `1px solid ${s.chipBorder}`,
+                            fontWeight: 600,
+                          }}
+                        >
+                          <span
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{ backgroundColor: s.dot }}
+                          />
+                          {s.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -400,10 +401,10 @@ export function DriftView() {
   );
 }
 
-function MetricCard({ m }: { m: DriftMetric }) {
+function MetricCard({ m }: { m: ViewDriftMetric }) {
   const status = statusOf(m);
   const s = STATUS_STYLE[status];
-  const max = m.alert_threshold * 1.2;
+  const max = (m.alert_threshold || 1) * 1.2;
   const pct = Math.min(100, (m.metric_value / max) * 100);
   const warnPct = (m.warn_threshold / max) * 100;
   const alertPct = (m.alert_threshold / max) * 100;
@@ -439,28 +440,34 @@ function MetricCard({ m }: { m: DriftMetric }) {
           {up ? "+" : ""}{m.delta.toFixed(2)}
         </span>
       </div>
-      <div className="text-[11px] mb-3" style={{ color: "#6B7280" }}>vs {Math.round(m.trend.length * 2)}h baseline</div>
+      <div className="text-[11px] mb-3" style={{ color: "#6B7280" }}>vs {Math.round((m.trend?.length || 0) * 2)}h baseline</div>
 
       {/* Recharts area sparkline */}
       <div style={{ height: 60, marginLeft: -8, marginRight: -8 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={m.trend} margin={{ top: 2, right: 4, left: 4, bottom: 0 }}>
-            <defs>
-              <linearGradient id={`grad-${m.metric_name.replace(/\s/g, "")}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={s.lineColor} stopOpacity={0.3} />
-                <stop offset="100%" stopColor={s.lineColor} stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke={s.lineColor}
-              strokeWidth={1.5}
-              fill={`url(#grad-${m.metric_name.replace(/\s/g, "")})`}
-              dot={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        {m.trend && m.trend.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={m.trend} margin={{ top: 2, right: 4, left: 4, bottom: 0 }}>
+              <defs>
+                <linearGradient id={`grad-${m.metric_name.replace(/\s/g, "")}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={s.lineColor} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={s.lineColor} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke={s.lineColor}
+                strokeWidth={1.5}
+                fill={`url(#grad-${m.metric_name.replace(/\s/g, "")})`}
+                dot={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-[10px]" style={{ color: "#6B7280" }}>
+            No trend data
+          </div>
+        )}
       </div>
 
       {/* Threshold bar */}

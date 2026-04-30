@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Star, X, Check, Inbox, Filter, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { GlassCard, PageHeader, Label, fieldClass, Skeleton } from "./ui-bits";
-import { submitQueueReview } from "../lib/api";
+import { submitQueueReview, getQueueItems } from "../lib/api";
 
 type QueueItem = {
   id: string;
@@ -17,15 +17,6 @@ type QueueItem = {
   model: string;
 };
 
-const SEED: QueueItem[] = [
-  { id: "rv_8a21", date: "2026-04-29 09:14", priority: 1, predicted_stars: 2, confidence: 0.54, reasons: ["low_confidence", "escalated_path"], body: "The product arrived damaged and customer service has not responded to my emails. I am very disappointed with the quality.", title: "Damaged on arrival", category: "electronics", model: "model_b_escalated" },
-  { id: "rv_7f02", date: "2026-04-29 08:52", priority: 1, predicted_stars: 3, confidence: 0.48, reasons: ["low_confidence", "language_inferred"], body: "Le tissu est doux mais la coupe est étrange. Je ne sais pas si je le garderais.", title: "Coupe étrange", category: "apparel", model: "model_a_fr" },
-  { id: "rv_7e91", date: "2026-04-29 08:31", priority: 2, predicted_stars: 4, confidence: 0.62, reasons: ["random_audit"], body: "Pretty good knife set for the price. Handles feel a bit light but they cut well.", title: "Decent value", category: "kitchen", model: "model_c_stacking" },
-  { id: "rv_6c44", date: "2026-04-29 07:58", priority: 2, predicted_stars: 3, confidence: 0.61, reasons: ["low_confidence"], body: "Interesting plot but the pacing was off in the middle chapters. Ending was satisfying though.", title: "Mixed feelings", category: "book", model: "model_c_stacking" },
-  { id: "rv_5b12", date: "2026-04-29 07:11", priority: 3, predicted_stars: 5, confidence: 0.69, reasons: ["random_audit"], body: "Perfect, exactly as described. Fast shipping too.", title: "", category: "other", model: "model_c_stacking" },
-  { id: "rv_4a08", date: "2026-04-29 06:42", priority: 3, predicted_stars: 1, confidence: 0.71, reasons: ["random_audit"], body: "No funcionó como se anunciaba, devolución solicitada.", title: "No funciona", category: "electronics", model: "model_a_es" },
-];
-
 const priorityConfig = {
   1: { label: "High", bg: "rgba(239,68,68,0.12)", text: "#FCA5A5", border: "rgba(239,68,68,0.3)" },
   2: { label: "Med", bg: "rgba(245,158,11,0.12)", text: "#FCD34D", border: "rgba(245,158,11,0.3)" },
@@ -33,11 +24,41 @@ const priorityConfig = {
 };
 
 export function QueueView() {
-  const [items, setItems] = useState(SEED);
+  const [items, setItems] = useState<QueueItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<QueueItem | null>(null);
   const [humanStars, setHumanStars] = useState(0);
   const [notes, setNotes] = useState("");
   const [filter, setFilter] = useState<"all" | 1 | 2 | 3>("all");
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const raw = await getQueueItems();
+        if (!mounted) return;
+        const mapped = raw.map(item => ({
+          id: item.id,
+          date: item.created_at ? new Date(item.created_at).toLocaleString() : "N/A",
+          priority: (item.priority as 1 | 2 | 3) || 3,
+          predicted_stars: item.inference?.prediction?.predicted_stars || 0,
+          confidence: item.inference?.prediction?.confidence || 0,
+          reasons: item.reasons || [],
+          body: item.inference?.review_data?.review_body || "",
+          title: item.inference?.review_data?.review_title || "",
+          category: item.inference?.review_data?.product_category || "unknown",
+          model: item.inference?.prediction?.model_used || "unknown",
+        }));
+        setItems(mapped);
+      } catch (err) {
+        console.error("Failed to load queue", err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+    load();
+    return () => { mounted = false; };
+  }, []);
 
   const filtered = filter === "all" ? items : items.filter(i => i.priority === filter);
 
@@ -116,92 +137,93 @@ export function QueueView() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((it) => (
-              <tr
-                key={it.id}
-                onClick={() => open(it)}
-                className="group cursor-pointer transition-colors"
-                style={{
-                  borderTop: "1px solid #374151",
-                  backgroundColor: selected?.id === it.id ? "rgba(5,150,105,0.06)" : "transparent",
-                }}
-                onMouseEnter={e => {
-                  if (selected?.id !== it.id) (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.02)";
-                }}
-                onMouseLeave={e => {
-                  if (selected?.id !== it.id) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                }}
-              >
-                <td className="px-5 py-4 text-[12.5px] font-mono" style={{ color: "#D1D5DB" }}>{it.date}</td>
-                <td className="px-3 py-4">
-                  <span
-                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px]"
-                    style={{
-                      backgroundColor: priorityConfig[it.priority].bg,
-                      color: priorityConfig[it.priority].text,
-                      border: `1px solid ${priorityConfig[it.priority].border}`,
-                      fontWeight: 500,
-                    }}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "currentColor" }} />
-                    {priorityConfig[it.priority].label}
-                  </span>
-                </td>
-                <td className="px-3 py-4">
-                  <div className="flex items-center gap-0.5">
-                    {[1,2,3,4,5].map(n => (
-                      <Star
-                        key={n}
-                        className="w-3.5 h-3.5"
-                        style={{ color: n <= it.predicted_stars ? "#FBBF24" : "#374151", fill: n <= it.predicted_stars ? "#FBBF24" : "transparent" }}
-                        strokeWidth={1.5}
-                      />
-                    ))}
-                  </div>
-                </td>
-                <td className="px-3 py-4">
-                  <ConfidenceBar v={it.confidence} />
-                </td>
-                <td className="px-3 py-4">
-                  <div className="flex flex-wrap gap-1">
-                    {it.reasons.map(r => (
-                      <span
-                        key={r}
-                        className="text-[10.5px] px-1.5 py-0.5 rounded font-mono"
-                        style={{ backgroundColor: "#111827", border: "1px solid #374151", color: "#9CA3AF" }}
-                      >
-                        {r}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-                <td className="px-3 py-4 text-right pr-5">
-                  <span
-                    className="text-[12px] transition-colors"
-                    style={{ color: selected?.id === it.id ? "#059669" : "#6B7280" }}
-                  >
-                    Review →
-                  </span>
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="py-16 text-center">
+                  <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin" style={{ color: "#374151" }} />
+                  <div className="text-[13px]" style={{ color: "#6B7280" }}>Loading queue...</div>
                 </td>
               </tr>
-            ))}
-            {filtered.length === 0 && (
+            ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={6} className="py-16 text-center">
                   <Inbox className="w-8 h-8 mx-auto mb-3" style={{ color: "#374151" }} />
-                  <div className="text-[13px]" style={{ color: "#6B7280" }}>Queue is clear. Nice work.</div>
+                  <div className="text-[13px]" style={{ color: "#6B7280" }}>No data available. Queue is clear.</div>
                 </td>
               </tr>
+            ) : (
+              filtered.map((it) => (
+                <tr
+                  key={it.id}
+                  onClick={() => open(it)}
+                  className="group cursor-pointer transition-colors"
+                  style={{
+                    borderTop: "1px solid #374151",
+                    backgroundColor: selected?.id === it.id ? "rgba(5,150,105,0.06)" : "transparent",
+                  }}
+                  onMouseEnter={e => {
+                    if (selected?.id !== it.id) (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.02)";
+                  }}
+                  onMouseLeave={e => {
+                    if (selected?.id !== it.id) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                  }}
+                >
+                  <td className="px-5 py-4 text-[12.5px] font-mono" style={{ color: "#D1D5DB" }}>{it.date}</td>
+                  <td className="px-3 py-4">
+                    <span
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px]"
+                      style={{
+                        backgroundColor: priorityConfig[it.priority].bg,
+                        color: priorityConfig[it.priority].text,
+                        border: `1px solid ${priorityConfig[it.priority].border}`,
+                        fontWeight: 500,
+                      }}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "currentColor" }} />
+                      {priorityConfig[it.priority].label}
+                    </span>
+                  </td>
+                  <td className="px-3 py-4">
+                    <div className="flex items-center gap-0.5">
+                      {[1,2,3,4,5].map(n => (
+                        <Star
+                          key={n}
+                          className="w-3.5 h-3.5"
+                          style={{ color: n <= it.predicted_stars ? "#FBBF24" : "#374151", fill: n <= it.predicted_stars ? "#FBBF24" : "transparent" }}
+                          strokeWidth={1.5}
+                        />
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-3 py-4">
+                    <ConfidenceBar v={it.confidence} />
+                  </td>
+                  <td className="px-3 py-4">
+                    <div className="flex flex-wrap gap-1">
+                      {it.reasons.map(r => (
+                        <span
+                          key={r}
+                          className="text-[10.5px] px-1.5 py-0.5 rounded font-mono"
+                          style={{ backgroundColor: "#111827", border: "1px solid #374151", color: "#9CA3AF" }}
+                        >
+                          {r}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-3 py-4 text-right pr-5">
+                    <span
+                      className="text-[12px] transition-colors"
+                      style={{ color: selected?.id === it.id ? "#059669" : "#6B7280" }}
+                    >
+                      Review →
+                    </span>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
-
-        {filtered.length > 0 && filtered.length < 3 && (
-          <div className="px-5 py-4 space-y-2" style={{ borderTop: "1px solid #374151" }}>
-            <Skeleton className="h-3 w-full" />
-            <Skeleton className="h-3 w-3/4" />
-          </div>
-        )}
       </GlassCard>
 
       {selected && (
