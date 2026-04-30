@@ -34,7 +34,7 @@ WORKDIR /app
 # Copy requirements first so this layer is cached when only code changes.
 # Install PyTorch CPU-only (no CUDA): much smaller (~300MB vs 2GB)
 # ---------------------------------------------------------------------------
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --timeout 300 \
     torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir --timeout 300 -r requirements.txt
@@ -42,8 +42,8 @@ RUN pip install --no-cache-dir --timeout 300 -r requirements.txt
 # ---------------------------------------------------------------------------
 # Application code
 # ---------------------------------------------------------------------------
-COPY api/     api/
-COPY router/  router/
+COPY backend/api/     api/
+COPY backend/router/  router/
 
 # ---------------------------------------------------------------------------
 # Trained model artifacts

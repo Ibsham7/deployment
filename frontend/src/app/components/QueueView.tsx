@@ -98,7 +98,7 @@ export function QueueView() {
         title="Human Review Queue"
         subtitle="Predictions flagged for human verification. Submit ground-truth labels to refine the model and resolve queued items."
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <StatBadge label="Pending" value={items.length} />
             <StatBadge label="High Pri" value={items.filter(i => i.priority === 1).length} accent />
           </div>
@@ -125,7 +125,8 @@ export function QueueView() {
           ))}
         </div>
 
-        <table className="w-full">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[800px]">
           <thead>
             <tr className="text-left text-[11px] tracking-wider uppercase" style={{ color: "#9CA3AF" }}>
               <th className="px-5 py-3" style={{ fontWeight: 500 }}>Date</th>
@@ -224,6 +225,7 @@ export function QueueView() {
             )}
           </tbody>
         </table>
+        </div>
       </GlassCard>
 
       {selected && (
@@ -284,7 +286,7 @@ function ReviewPanel({ item, stars, setStars, notes, setNotes, onClose, onSubmit
     <div className="fixed inset-0 z-50 flex">
       <div onClick={onClose} className="flex-1 bg-black/50 backdrop-blur-sm" />
       <div
-        className="w-[480px] h-full overflow-y-auto"
+        className="w-full md:w-[480px] h-full overflow-y-auto"
         style={{ backgroundColor: "#1F2937", borderLeft: "1px solid #374151" }}
       >
         <div className="p-6 flex items-center justify-between" style={{ borderBottom: "1px solid #374151" }}>

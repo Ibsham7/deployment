@@ -169,6 +169,84 @@ def test_predict_endpoint_detects_language_when_missing(client, monkeypatch):
     assert payload["language_was_detected"] is True
 
 
+def test_predict_endpoint_model_c_with_base_model(client, monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "run_inference",
+        lambda **_kwargs: {
+            "predicted_stars": 3,
+            "sentiment": "neutral",
+            "confidence": 0.75,
+            "model_used": "model_c",
+            "base_model_used": "model_b",
+        },
+    )
+    monkeypatch.setattr(
+        main,
+        "preprocess_incoming_review",
+        lambda review_body, review_title=None: {
+            "review_body": review_body,
+            "review_title": review_title,
+            "model_text": review_body,
+            "text_length": 5,
+        },
+    )
+    monkeypatch.setattr(main, "compute_text_signals", lambda _text: {"non_ascii_ratio": 0.0})
+    monkeypatch.setattr(
+        main,
+        "log_inference_and_maybe_enqueue",
+        lambda **_kwargs: {
+            "inference_id": "inf_model_c_1",
+            "queued_for_review": False,
+            "review_reasons": [],
+        },
+    )
+
+    response = client.post(
+        "/predict",
+        json={
+            "review_body": "This is okay, could be better.",
+            "product_category": "electronics",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["model_used"] == "model_c"
+    assert payload["base_model_used"] == "model_b"
+
+
+def test_predict_endpoint_explicit_null_language(client, monkeypatch):
+    def _fake_run_inference(**kwargs):
+        assert kwargs["language"] is None
+        return {
+            "predicted_stars": 5,
+            "sentiment": "positive",
+            "confidence": 0.95,
+            "model_used": "model_a",
+            "resolved_language": "en",
+            "language_was_detected": True,
+        }
+
+    monkeypatch.setattr(main, "run_inference", _fake_run_inference)
+    monkeypatch.setattr(main, "compute_text_signals", lambda _text: {"non_ascii_ratio": 0.0})
+    monkeypatch.setattr(main, "preprocess_incoming_review", lambda *a, **k: {"review_body": "x", "text_length": 1})
+    monkeypatch.setattr(main, "log_inference_and_maybe_enqueue", lambda **k: {"inference_id": "1"})
+
+    response = client.post(
+        "/predict",
+        json={
+            "review_body": "This should be auto-detected",
+            "language": None,
+            "product_category": "electronics",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["language_was_detected"] is True
+
+
 def test_predict_endpoint_returns_503_when_models_unloaded(client):
     main.MODELS["loaded"] = False
 

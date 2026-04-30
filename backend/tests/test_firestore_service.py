@@ -99,6 +99,41 @@ def test_log_inference_and_maybe_enqueue_creates_queue_for_low_confidence(monkey
     assert len(queue_docs) == 1
 
 
+def test_log_inference_and_maybe_enqueue_creates_queue_for_unsupported_language(monkeypatch):
+    monkeypatch.setenv("HITL_CONFIDENCE_THRESHOLD", "0.0")
+    monkeypatch.setenv("HITL_RANDOM_SAMPLE_RATE", "0")
+    monkeypatch.setattr(fs.random, "random", lambda: 1.0)
+    monkeypatch.setattr(fs, "firestore", types.SimpleNamespace(SERVER_TIMESTAMP="ts"))
+
+    client = DummyClient()
+    result = fs.log_inference_and_maybe_enqueue(
+        client=client,
+        review_data={
+            "review_body": "This is in Italian",
+            "language": "it",
+            "product_category": "electronics",
+        },
+        prediction={
+            "predicted_stars": 4,
+            "sentiment": "positive",
+            "confidence": 0.99,
+            "model_used": "model_a",
+            "resolved_language": "it",
+        },
+        text_length=10,
+        non_ascii_ratio=0.0,
+    )
+
+    assert result["queued_for_review"] is True
+    assert "unsupported_language" in result["review_reasons"]
+    
+    queue_docs = client.collection(fs.COLLECTION_HUMAN_QUEUE).docs
+    assert len(queue_docs) == 1
+    # Check priority is 1 for unsupported_language
+    queue_item = list(queue_docs.values())[0]
+    assert queue_item["priority"] == 1
+
+
 def test_submit_human_label_resolves_queue_and_updates_inference(monkeypatch):
     monkeypatch.setattr(fs, "firestore", types.SimpleNamespace(SERVER_TIMESTAMP="ts"))
     client = DummyClient()

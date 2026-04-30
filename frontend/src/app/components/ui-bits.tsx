@@ -44,7 +44,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex items-end justify-between mb-8 gap-6">
+    <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-6">
       <div>
         <div className="text-[11px] tracking-[0.2em] text-[#059669] uppercase mb-2" style={{ fontWeight: 600 }}>{eyebrow}</div>
         <h1 className="text-[#F9FAFB] tracking-tight" style={{ fontSize: 30, fontWeight: 600, lineHeight: 1.1 }}>

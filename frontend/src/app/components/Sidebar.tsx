@@ -1,4 +1,4 @@
-import { FlaskConical, Sparkles, Inbox, Activity, Zap } from "lucide-react";
+import { FlaskConical, Sparkles, Inbox, Activity, Zap, X } from "lucide-react";
 
 export type ViewKey = "simulator" | "results" | "queue" | "drift";
 
@@ -13,27 +13,41 @@ export function Sidebar({
   active,
   onSelect,
   hasResults,
+  onClose,
 }: {
   active: ViewKey;
   onSelect: (k: ViewKey) => void;
   hasResults: boolean;
+  onClose?: () => void;
 }) {
   return (
     <aside
       className="w-64 shrink-0 h-screen sticky top-0 flex flex-col"
       style={{ backgroundColor: "#1F2937", borderRight: "1px solid #374151" }}
     >
-      <div className="px-5 pt-6 pb-8 flex items-center gap-3">
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg, #059669, #047857)", boxShadow: "0 4px 12px rgba(5,150,105,0.3)" }}
-        >
-          <Zap className="w-4 h-4 text-white" strokeWidth={2.5} />
+      <div className="px-5 pt-6 pb-8 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg, #059669, #047857)", boxShadow: "0 4px 12px rgba(5,150,105,0.3)" }}
+          >
+            <Zap className="w-4 h-4 text-white" strokeWidth={2.5} />
+          </div>
+          <div>
+            <div className="text-[#F9FAFB] tracking-tight" style={{ fontWeight: 600, fontSize: 15 }}>ReviewRoute</div>
+            <div className="text-[11px] text-[#9CA3AF] tracking-wider uppercase">MLOps Console</div>
+          </div>
         </div>
-        <div>
-          <div className="text-[#F9FAFB] tracking-tight" style={{ fontWeight: 600, fontSize: 15 }}>ReviewRoute</div>
-          <div className="text-[11px] text-[#9CA3AF] tracking-wider uppercase">MLOps Console</div>
-        </div>
+        
+        {onClose && (
+          <button 
+            onClick={onClose}
+            className="lg:hidden p-1.5 rounded-lg"
+            style={{ border: "1px solid #374151", backgroundColor: "#111827" }}
+          >
+            <X className="w-4 h-4 text-[#9CA3AF]" />
+          </button>
+        )}
       </div>
 
       <nav className="px-3 flex-1 space-y-1">

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Bell } from "lucide-react";
+import { Search, Bell, Menu, X } from "lucide-react";
 import { Toaster } from "sonner";
 import { Sidebar, ViewKey } from "./components/Sidebar";
 import { SimulatorView, SimulatorRequest } from "./components/SimulatorView";
@@ -13,11 +13,18 @@ export default function App() {
   const [view, setView] = useState<ViewKey>("simulator");
   const [request, setRequest] = useState<SimulatorRequest | null>(null);
   const [result, setResult] = useState<InferenceResult | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const onResult = (req: SimulatorRequest, res: InferenceResult) => {
     setRequest(req);
     setResult(res);
     setView("results");
+    setSidebarOpen(false);
+  };
+
+  const switchView = (v: ViewKey) => {
+    setView(v);
+    setSidebarOpen(false);
   };
 
   return (
@@ -40,14 +47,40 @@ export default function App() {
       />
 
       <div className="relative z-10 flex">
-        <Sidebar active={view} onSelect={setView} hasResults={!!result} />
+        {/* Sidebar Overlay for Mobile */}
+        {sidebarOpen && (
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        <div className={`
+          fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 lg:relative lg:translate-x-0
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}>
+          <Sidebar 
+            active={view} 
+            onSelect={switchView} 
+            hasResults={!!result} 
+            onClose={() => setSidebarOpen(false)}
+          />
+        </div>
 
         <main className="flex-1 min-w-0">
           <header
             className="sticky top-0 z-20 border-b"
             style={{ backgroundColor: "#111827", borderColor: "#374151" }}
           >
-            <div className="px-10 py-4 flex items-center justify-between gap-6">
+            <div className="px-4 md:px-10 py-4 flex items-center justify-between gap-6">
+              <button 
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="lg:hidden p-2 rounded-xl"
+                style={{ backgroundColor: "#1F2937", border: "1px solid #374151" }}
+              >
+                {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+
               <div className="flex-1 max-w-md relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6B7280]" />
                 <input
@@ -63,7 +96,7 @@ export default function App() {
             </div>
           </header>
 
-          <div className="px-10 py-10 max-w-[1400px]">
+          <div className="px-4 md:px-10 py-6 md:py-10 max-w-[1400px]">
             {view === "simulator" && <SimulatorView onResult={onResult} />}
             {view === "results" && result && request && (
               <ResultsView result={result} request={request} onBack={() => setView("simulator")} />

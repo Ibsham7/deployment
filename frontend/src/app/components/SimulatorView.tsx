@@ -117,7 +117,7 @@ export function SimulatorView({ onResult }: { onResult: (req: SimulatorRequest, 
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <SelectField label="Product Category" value={category} onChange={setCategory} options={CATEGORIES.map(c => ({ v: c, l: c[0].toUpperCase() + c.slice(1) }))} />
               <SelectField label="Language" value={language} onChange={setLanguage} options={LANGUAGES} />
             </div>

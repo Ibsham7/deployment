@@ -335,8 +335,8 @@ export function DriftView() {
           <span className="text-[12px]" style={{ color: "#6B7280" }}>Showing {runHistory.length}</span>
         </div>
 
-        <div className="overflow-hidden rounded-xl" style={{ border: "1px solid #374151" }}>
-          <table className="w-full text-[12.5px]">
+        <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid #374151" }}>
+          <table className="w-full text-[12.5px] min-w-[900px]">
             <thead style={{ backgroundColor: "#111827" }}>
               <tr className="text-left text-[10.5px] uppercase tracking-wider" style={{ color: "#9CA3AF" }}>
                 <th className="px-4 py-2.5" style={{ fontWeight: 500 }}>Run</th>

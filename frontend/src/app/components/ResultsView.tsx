@@ -68,8 +68,8 @@ export function ResultsView({ result, request, onBack }: { result: InferenceResu
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <GlassCard className="lg:col-span-2 p-7">
-          <div className="grid grid-cols-2 gap-6 mb-7">
+        <GlassCard className="lg:col-span-2 p-5 md:p-7">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-7">
             <div>
               <div className="text-[11px] tracking-wide uppercase mb-3" style={{ color: "#9CA3AF" }}>Predicted Rating</div>
               <div className="flex items-center gap-1.5">
