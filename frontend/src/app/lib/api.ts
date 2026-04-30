@@ -6,7 +6,7 @@ export type InferRequest = {
   review_title: string;
   review_body: string;
   product_category: string;
-  language: string;
+  language: string | null;
 };
 
 export type InferResponse = {
@@ -14,6 +14,8 @@ export type InferResponse = {
   sentiment: "positive" | "negative" | "neutral";
   confidence: number;
   model_used: string;
+  base_model_used?: string;
+  resolved_language: string;
   language_was_detected: boolean;
   queued_for_review: boolean;
   review_reasons: string[];
@@ -76,7 +78,10 @@ export async function runInference(req: InferRequest): Promise<InferResponse> {
     body: JSON.stringify(req),
   });
   if (!res.ok) {
-    throw new Error(`API Error: ${res.statusText}`);
+    const errorBody = await res.json().catch(() => ({}));
+    const detail = errorBody.detail;
+    const msg = typeof detail === 'string' ? detail : (Array.isArray(detail) ? JSON.stringify(detail) : res.statusText);
+    throw new Error(msg || `API Error: ${res.statusText}`);
   }
   return res.json();
 }

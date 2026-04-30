@@ -200,6 +200,13 @@ def log_inference_and_maybe_enqueue(
     client.collection(COLLECTION_INFERENCE).document(inference_id).set(inference_doc)
 
     reasons: list[str] = []
+    
+    # Language check
+    supported_langs = {"en", "es", "fr", "de", "ja", "zh"}
+    resolved_lang = str(prediction.get("resolved_language", "")).lower().strip()
+    if resolved_lang and resolved_lang not in supported_langs:
+        reasons.append("unsupported_language")
+
     if confidence < confidence_threshold:
         reasons.append("low_confidence")
     if include_escalations and "escalated" in model_used:
@@ -210,7 +217,7 @@ def log_inference_and_maybe_enqueue(
     queued = bool(reasons)
     if queued:
         queue_id = str(uuid.uuid4())
-        priority = 1 if "low_confidence" in reasons else (2 if "escalated_path" in reasons else 3)
+        priority = 1 if ("low_confidence" in reasons or "unsupported_language" in reasons) else (2 if "escalated_path" in reasons else 3)
         queue_doc = {
             "inference_id": inference_id,
             "reasons": reasons,
@@ -251,7 +258,26 @@ def list_human_review_queue(client: Any, status: str = "pending", limit: int = 5
         for row in items:
             iid = row.get("inference_id")
             if iid and iid in inference_map:
-                row["inference"] = inference_map[iid]
+                inf_data = inference_map[iid]
+                # Format for frontend: group review text and prediction details
+                row["inference"] = {
+                    "review_data": {
+                        "review_body": inf_data.get("review_body"),
+                        "review_title": inf_data.get("review_title"),
+                        "product_category": inf_data.get("product_category"),
+                        "language": inf_data.get("language"),
+                        "text_length": inf_data.get("text_length"),
+                        "non_ascii_ratio": inf_data.get("non_ascii_ratio"),
+                    },
+                    "prediction": {
+                        "predicted_stars": inf_data.get("predicted_stars"),
+                        "sentiment": inf_data.get("sentiment"),
+                        "confidence": inf_data.get("confidence"),
+                        "model_used": inf_data.get("model_used"),
+                        "base_model_used": inf_data.get("base_model_used"),
+                    },
+                    "created_at": inf_data.get("created_at")
+                }
 
     return items
 

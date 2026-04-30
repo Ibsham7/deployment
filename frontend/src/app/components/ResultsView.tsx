@@ -7,10 +7,23 @@ export type InferenceResult = {
   sentiment: "positive" | "negative" | "neutral";
   confidence: number;
   model_used: string;
+  base_model_used?: string;
+  resolved_language: string;
   language_was_detected: boolean;
   queued_for_review: boolean;
   review_reasons: string[];
 };
+
+const LANG_NAMES: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  fr: "French",
+  de: "German",
+  ja: "Japanese",
+  zh: "Chinese",
+};
+
+const getLanguageName = (code: string) => LANG_NAMES[code.toLowerCase()] || code.toUpperCase();
 
 export function ResultsView({ result, request, onBack }: { result: InferenceResult; request: SimulatorRequest; onBack: () => void }) {
   const sentimentConfig = {
@@ -93,7 +106,8 @@ export function ResultsView({ result, request, onBack }: { result: InferenceResu
             <div className="flex gap-2 mt-4">
               <InlineTag color="green">{request.product_category}</InlineTag>
               <InlineTag icon={<Globe className="w-3 h-3" />} color="gray">
-                {request.language}{result.language_was_detected && " · detected"}
+                {getLanguageName(result.resolved_language)}
+                {result.language_was_detected && " · auto-detected"}
               </InlineTag>
             </div>
           </div>
@@ -101,8 +115,16 @@ export function ResultsView({ result, request, onBack }: { result: InferenceResu
           <div className="pt-6 mt-6" style={{ borderTop: "1px solid #374151" }}>
             <div className="text-[11px] tracking-wide uppercase mb-3" style={{ color: "#9CA3AF" }}>Decision Reasons</div>
             <div className="flex flex-wrap gap-2">
-              {result.review_reasons.length === 0 && (
+              {result.review_reasons.length === 0 && result.model_used !== "model_c" && (
                 <span className="text-[12.5px]" style={{ color: "#6B7280" }}>No special routing flags — standard path.</span>
+              )}
+              {result.model_used === "model_c" && (
+                <span
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-mono"
+                  style={{ backgroundColor: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.25)", color: "#818CF8" }}
+                >
+                  <Hash className="w-3 h-3" />supported_category
+                </span>
               )}
               {result.review_reasons.map(r => (
                 <span
@@ -126,11 +148,20 @@ export function ResultsView({ result, request, onBack }: { result: InferenceResu
           <GlassCard className="p-6">
             <div className="text-[11px] tracking-wide uppercase mb-4" style={{ color: "#9CA3AF" }}>Routing</div>
             <div className="space-y-4">
-              <RoutingRow icon={<Cpu className="w-4 h-4" style={{ color: "#059669" }} />} label="Model Used" value={result.model_used} mono />
+              <RoutingRow 
+                icon={<Cpu className="w-4 h-4" style={{ color: "#059669" }} />} 
+                label="Model Used" 
+                value={result.model_used === "model_c" 
+                  ? `Model C (Stacking Ensemble + ${result.base_model_used || 'Model A/B'})` 
+                  : result.model_used.toUpperCase().replace('_', ' ')} 
+                mono 
+              />
               <RoutingRow
                 icon={<Globe className="w-4 h-4" style={{ color: "#059669" }} />}
-                label="Language Detected"
-                value={result.language_was_detected ? "Yes — auto-inferred" : "No — caller specified"}
+                label="Language Used"
+                value={result.language_was_detected 
+                  ? `${getLanguageName(result.resolved_language)} (Auto-detected)` 
+                  : `${getLanguageName(result.resolved_language)} (Specified)`}
               />
               <RoutingRow
                 icon={<ArrowRight className="w-4 h-4" style={{ color: result.queued_for_review ? "#FBBF24" : "#059669" }} />}

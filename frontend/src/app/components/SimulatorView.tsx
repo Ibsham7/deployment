@@ -9,7 +9,7 @@ export type SimulatorRequest = {
   review_title: string;
   review_body: string;
   product_category: string;
-  language: string;
+  language: string | null;
 };
 
 const CATEGORIES = ["electronics", "apparel", "book", "kitchen", "other"];
@@ -19,6 +19,8 @@ const LANGUAGES = [
   { v: "es", l: "Spanish" },
   { v: "fr", l: "French" },
   { v: "de", l: "German" },
+  { v: "ja", l: "Japanese" },
+  { v: "zh", l: "Chinese" },
 ];
 
 const SAMPLES = [
@@ -40,11 +42,27 @@ export function SimulatorView({ onResult }: { onResult: (req: SimulatorRequest, 
     setRunning(true);
     setError(null);
     try {
-      const req: SimulatorRequest = { review_title: title, review_body: body, product_category: category, language };
+      const apiLang = language === "auto-detect" ? null : language;
+      const req: SimulatorRequest = { 
+        review_title: title, 
+        review_body: body, 
+        product_category: category, 
+        language: apiLang 
+      };
       const res: InferResponse = await runInference(req);
+      
+      // Supported languages: English, Spanish, French, German, Japanese, Chinese
+      const supported = ["en", "es", "fr", "de", "ja", "zh"];
+      const detected = res.resolved_language || "";
+      
+      if (detected && !supported.includes(detected)) {
+        setError(`Language "${detected}" is not officially supported. Results may be unreliable.`);
+      }
+
       onResult(req, res as InferenceResult);
-    } catch (e) {
-      setError("Inference failed. Please try again.");
+    } catch (e: any) {
+      const msg = e.response?.data?.detail || e.message || "Inference failed. Please try again.";
+      setError(typeof msg === "string" ? msg : JSON.stringify(msg));
     } finally {
       setRunning(false);
     }
