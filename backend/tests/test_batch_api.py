@@ -19,8 +19,9 @@ class MockResponse:
             raise requests.exceptions.HTTPError(f"Error {self.status_code}")
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     # Setup mock app state
+    monkeypatch.setenv("API_KEY", "")
     main.MODELS["loaded"] = True
     main.FIRESTORE_STATE["connected"] = True
     main.FIRESTORE_STATE["client"] = MagicMock()

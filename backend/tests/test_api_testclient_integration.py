@@ -22,6 +22,7 @@ class MockResponse:
 @pytest.fixture(autouse=True)
 def reset_app_state(monkeypatch):
     monkeypatch.setenv("HF_SPACE_URL", "http://test")
+    monkeypatch.setenv("API_KEY", "")
     monkeypatch.setattr(requests, "get", lambda url, timeout: MockResponse(200))
     original_models = dict(main.MODELS)
     original_firestore_state = dict(main.FIRESTORE_STATE)
