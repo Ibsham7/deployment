@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from huggingface_hub import snapshot_download
 
-from engine import run_inference
+from engine import run_inference, run_batch_inference
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
@@ -104,4 +104,18 @@ def predict(req: InferenceRequest):
         return result
     except Exception as exc:
         log.exception("Inference error")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.post("/predict/batch")
+def predict_batch(reqs: list[InferenceRequest]):
+    if not MODELS.get("loaded"):
+        raise HTTPException(status_code=503, detail="Models not loaded")
+    
+    try:
+        # Convert Pydantic models to dicts for the engine
+        batch_data = [r.model_dump() for r in reqs]
+        results = run_batch_inference(batch_data, MODELS)
+        return results
+    except Exception as exc:
+        log.exception("Batch inference error")
         raise HTTPException(status_code=500, detail=str(exc))

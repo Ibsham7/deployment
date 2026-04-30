@@ -81,3 +81,20 @@ def run_inference(review_body: str, language: str | None, product_category: str,
         return response.json()
     except requests.exceptions.RequestException as exc:
         raise ValueError(f"Inference API request failed: {exc}")
+
+
+def run_batch_inference(reviews: list[dict]) -> list[dict]:
+    """
+    Calls the Hugging Face Space API to run batch inference.
+    """
+    hf_space_url = os.getenv("HF_SPACE_URL")
+    if not hf_space_url:
+        hf_space_url = "http://localhost:7860"
+        
+    url = f"{hf_space_url.rstrip('/')}/predict/batch"
+    try:
+        response = requests.post(url, json=reviews, timeout=60)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as exc:
+        raise ValueError(f"Batch inference API request failed: {exc}")

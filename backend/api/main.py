@@ -33,13 +33,14 @@ import requests
 # module is launched from any working directory.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from router.engine import compute_text_signals, preprocess_incoming_review, run_inference  # noqa: E402
+from router.engine import compute_text_signals, preprocess_incoming_review, run_inference, run_batch_inference  # noqa: E402
 
 from api.firestore_service import (  # noqa: E402
     get_firestore_client,
     get_latest_drift_metrics,
     list_human_review_queue,
     log_inference_and_maybe_enqueue,
+    log_batch_inference,
     run_drift_detection,
     submit_human_label,
 )
@@ -54,6 +55,8 @@ from api.schemas import (  # noqa: E402
     HumanReviewQueueItem,
     PredictionResponse,
     ReviewRequest,
+    BatchReviewRequest,
+    BatchPredictionResponse,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
@@ -280,6 +283,94 @@ async def predict(review: ReviewRequest) -> PredictionResponse:
             log.warning("Failed to persist inference in Firestore: %s", exc)
 
     return PredictionResponse(**result)
+
+
+@app.post(
+    "/predict/batch",
+    response_model=BatchPredictionResponse,
+    tags=["Prediction"],
+    summary="Predict star ratings for a batch of reviews",
+    description=(
+        "Submit multiple reviews and receive predictions for all, "
+        "along with summary statistics and batch-optimized storage."
+    ),
+)
+async def predict_batch(request: BatchReviewRequest) -> BatchPredictionResponse:
+    if not MODELS.get("loaded"):
+        raise HTTPException(status_code=503, detail="Models not loaded")
+
+    start_time = perf_counter()
+    
+    try:
+        # 1. Inference
+        batch_inputs = [r.model_dump() for r in request.reviews]
+        predictions = run_batch_inference(batch_inputs)
+    except Exception as exc:
+        log.exception("Batch inference failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    latency_ms_total = (perf_counter() - start_time) * 1000.0
+    latency_per_item = latency_ms_total / len(request.reviews)
+
+    # 2. Enrich and Log
+    enriched_predictions = []
+    firestore_data = []
+    
+    for i, pred in enumerate(predictions):
+        orig_req = request.reviews[i]
+        
+        # Default fields
+        pred.setdefault("inference_id", None)
+        pred.setdefault("queued_for_review", False)
+        pred.setdefault("review_reasons", [])
+        pred.setdefault("resolved_language", orig_req.language or "en")
+        pred.setdefault("language_was_detected", orig_req.language is None)
+        
+        enriched_predictions.append(PredictionResponse(**pred))
+        
+        # Prep for Firestore
+        prep = preprocess_incoming_review(orig_req.review_body, orig_req.review_title)
+        signals = compute_text_signals(prep["review_body"])
+        
+        firestore_data.append({
+            "review_data": orig_req.model_dump(),
+            "prediction": pred,
+            "text_length": prep["text_length"],
+            "non_ascii_ratio": float(signals["non_ascii_ratio"]),
+            "latency_ms": latency_per_item
+        })
+
+    # Batch Firestore Write
+    client = FIRESTORE_STATE.get("client")
+    if client and FIRESTORE_STATE.get("connected"):
+        try:
+            log_results = log_batch_inference(client, firestore_data)
+            for i, log_res in enumerate(log_results):
+                enriched_predictions[i].inference_id = log_res.get("inference_id")
+                enriched_predictions[i].queued_for_review = log_res.get("queued_for_review", False)
+                enriched_predictions[i].review_reasons = log_res.get("review_reasons", [])
+        except Exception as exc:
+            log.warning("Batch Firestore logging failed: %s", exc)
+
+    # 3. Summary Stats
+    stars = [p.predicted_stars for p in enriched_predictions]
+    sentiments = [p.sentiment for p in enriched_predictions]
+    
+    summary = {
+        "count": len(stars),
+        "average_stars": round(sum(stars) / len(stars), 2) if stars else 0,
+        "sentiment_distribution": {
+            "positive": sentiments.count("positive"),
+            "neutral": sentiments.count("neutral"),
+            "negative": sentiments.count("negative")
+        },
+        "total_latency_ms": round(latency_ms_total, 2)
+    }
+
+    return BatchPredictionResponse(
+        predictions=enriched_predictions,
+        summary=summary
+    )
 
 
 @app.get(

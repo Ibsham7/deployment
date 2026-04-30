@@ -76,6 +76,7 @@ class ReviewRequest(BaseModel):
     }
 
 
+
 class PredictionResponse(BaseModel):
     """Output schema returned by the /predict endpoint."""
 
@@ -122,6 +123,20 @@ class PredictionResponse(BaseModel):
             ]
         }
     }
+
+
+class BatchReviewRequest(BaseModel):
+    """Input schema for multiple review prediction requests."""
+    reviews: list[ReviewRequest] = Field(..., min_length=1, max_length=500)
+
+
+class BatchPredictionResponse(BaseModel):
+    """Output schema returned by the /predict/batch endpoint."""
+    predictions: list[PredictionResponse]
+    summary: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Aggregate stats (average stars, sentiment distribution, etc.)"
+    )
 
 
 class HealthResponse(BaseModel):

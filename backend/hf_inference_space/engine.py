@@ -401,3 +401,113 @@ def run_inference(review_body: str, language: str | None, product_category: str,
 
     result = _run_model_c(text, base_proba, base_model_used_resolved, product_category, models)
     return _attach_language_context(result, resolved_language, language_was_detected)
+
+
+def run_batch_inference(requests: list[dict], models: dict) -> list[dict]:
+    """
+    Optimized batch inference.
+    Group inputs by selected model to maximize throughput (especially for Model B / PyTorch).
+    """
+    results = [None] * len(requests)
+    
+    # 1. Preprocess and select models
+    preprocessed = []
+    for i, req in enumerate(requests):
+        prep = preprocess_incoming_review(req["review_body"], req.get("review_title"))
+        lang = _normalize_language_code(req.get("language"))
+        lang_was_detected = False
+        if not lang:
+            lang = detect_language(prep["review_body"], prep["review_title"])
+            lang_was_detected = True
+            
+        selected = select_model(lang, prep["text_length"], req.get("product_category", "other"), prep["review_body"])
+        
+        preprocessed.append({
+            "index": i,
+            "prep": prep,
+            "lang": lang,
+            "lang_was_detected": lang_was_detected,
+            "selected": selected,
+            "category": req.get("product_category", "other")
+        })
+
+    # 2. Handle Model A (Grouped)
+    model_a_indices = [p for p in preprocessed if p["selected"] == "model_a"]
+    for p in model_a_indices:
+        # Model A (SKLearn) doesn't gain much from batching in small scales, 
+        # but we use the existing single-inference logic for consistency.
+        res = run_inference(
+            review_body=p["prep"]["review_body"],
+            language=p["lang"],
+            product_category=p["category"],
+            models=models,
+            review_title=p["prep"]["review_title"]
+        )
+        results[p["index"]] = res
+
+    # 3. Handle Model B (Batched PyTorch)
+    model_b_indices = [p for p in preprocessed if p["selected"] == "model_b"]
+    if model_b_indices:
+        texts = [p["prep"]["model_text"] for p in model_b_indices]
+        tokenizer_b = models["model_b_tokenizer"]
+        model_b = models["model_b"]
+        device = next(model_b.parameters()).device
+        
+        inputs = tokenizer_b(
+            texts,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=MODEL_B_MAX_LENGTH,
+        ).to(device)
+        
+        with torch.no_grad():
+            logits = model_b(**inputs).logits
+            probas = torch.softmax(logits, dim=1).cpu().numpy()
+
+        for i, p in enumerate(model_b_indices):
+            proba = probas[i]
+            predicted_stars = int(np.argmax(proba) + 1)
+            confidence = float(np.max(proba))
+            
+            # Check for escalation to C
+            if (confidence < MODEL_B_ESCALATION_THRESHOLD and p["category"] in MODEL_B_ESCALATION_CATEGORIES):
+                res = _run_model_c(p["prep"]["model_text"], proba, "model_b", p["category"], models)
+                res["model_used"] = "model_b_escalated_to_c"
+            else:
+                sentiment = "positive" if predicted_stars >= 4 else ("negative" if predicted_stars <= 2 else "neutral")
+                res = {
+                    "predicted_stars": predicted_stars,
+                    "sentiment": sentiment,
+                    "confidence": confidence,
+                    "model_used": "model_b",
+                }
+            
+            results[p["index"]] = _attach_language_context(res, p["lang"], p["lang_was_detected"])
+
+    # 4. Handle Model C (Direct)
+    model_c_indices = [p for p in preprocessed if p["selected"] == "model_c"]
+    for p in model_c_indices:
+        res = run_inference(
+            review_body=p["prep"]["review_body"],
+            language=p["lang"],
+            product_category=p["category"],
+            models=models,
+            review_title=p["prep"]["review_title"]
+        )
+        results[p["index"]] = res
+
+    # 5. Final fallback for any missed
+    for i, res in enumerate(results):
+        if res is None:
+            p = preprocessed[i]
+            res = run_inference(
+                review_body=p["prep"]["review_body"],
+                language=p["lang"],
+                product_category=p["category"],
+                models=models,
+                review_title=p["prep"]["review_title"]
+            )
+            results[i] = res
+
+    return results

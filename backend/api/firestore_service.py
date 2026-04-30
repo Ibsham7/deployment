@@ -236,6 +236,89 @@ def log_inference_and_maybe_enqueue(
     }
 
 
+def log_batch_inference(
+    client: Any,
+    batch_data: list[dict[str, Any]],  # List of {review_data, prediction, text_length, non_ascii_ratio, latency_ms}
+) -> list[dict[str, Any]]:
+    """Persist a batch of inference metadata using Firestore's write_batch."""
+    if client is None or firestore is None:
+        return [{"logged": False, "inference_id": None} for _ in batch_data]
+
+    confidence_threshold = _env_float("HITL_CONFIDENCE_THRESHOLD", 0.60)
+    random_sample_rate = min(max(_env_float("HITL_RANDOM_SAMPLE_RATE", 0.02), 0.0), 1.0)
+    include_escalations = _env_bool("HITL_INCLUDE_ESCALATIONS", True)
+    supported_langs = {"en", "es", "fr", "de", "ja", "zh"}
+
+    db_batch = client.batch()
+    results = []
+
+    for item in batch_data:
+        review_data = item["review_data"]
+        prediction = item["prediction"]
+        
+        review_body = str(review_data.get("review_body", ""))
+        review_title = review_data.get("review_title")
+        inference_id = str(uuid.uuid4())
+        model_used = str(prediction.get("model_used", "unknown"))
+        confidence = float(prediction.get("confidence", 0.0))
+
+        inference_doc = {
+            "created_at": _server_timestamp(),
+            "review_body": review_body,
+            "review_title": review_title,
+            "language": str(review_data.get("language", "")),
+            "product_category": str(review_data.get("product_category", "")),
+            "text_length": int(item["text_length"]),
+            "non_ascii_ratio": float(item["non_ascii_ratio"]),
+            "model_used": model_used,
+            "base_model_used": prediction.get("base_model_used"),
+            "predicted_stars": int(prediction.get("predicted_stars", 0)),
+            "sentiment": str(prediction.get("sentiment", "")),
+            "confidence": confidence,
+            "latency_ms": float(item.get("latency_ms")) if item.get("latency_ms") is not None else None,
+            "review_hash": _hash_review(review_body, review_title),
+        }
+        
+        inf_ref = client.collection(COLLECTION_INFERENCE).document(inference_id)
+        db_batch.set(inf_ref, inference_doc)
+
+        reasons = []
+        resolved_lang = str(prediction.get("resolved_language", "")).lower().strip()
+        if resolved_lang and resolved_lang not in supported_langs:
+            reasons.append("unsupported_language")
+        if confidence < confidence_threshold:
+            reasons.append("low_confidence")
+        if include_escalations and "escalated" in model_used:
+            reasons.append("escalated_path")
+        if random.random() < random_sample_rate:
+            reasons.append("random_audit")
+
+        queued = bool(reasons)
+        if queued:
+            queue_id = str(uuid.uuid4())
+            priority = 1 if ("low_confidence" in reasons or "unsupported_language" in reasons) else (2 if "escalated_path" in reasons else 3)
+            queue_doc = {
+                "inference_id": inference_id,
+                "reasons": reasons,
+                "priority": priority,
+                "status": "pending",
+                "assigned_to": None,
+                "created_at": _server_timestamp(),
+            }
+            queue_ref = client.collection(COLLECTION_HUMAN_QUEUE).document(queue_id)
+            db_batch.set(queue_ref, queue_doc)
+
+        results.append({
+            "logged": True,
+            "inference_id": inference_id,
+            "queued_for_review": queued,
+            "review_reasons": reasons,
+        })
+
+    db_batch.commit()
+    return results
+
+
 def list_human_review_queue(client: Any, status: str = "pending", limit: int = 50) -> list[dict[str, Any]]:
     """Return queued reviews for reviewer workflows."""
     if client is None:
