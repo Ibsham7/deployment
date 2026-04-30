@@ -1,6 +1,18 @@
 // Real API service for ReviewRoute MLOps Platform
 
 const BASE_URL = import.meta.env.VITE_API_URL || "https://reviewroute-backend.onrender.com";
+const API_KEY = import.meta.env.VITE_API_KEY || "";
+
+const getHeaders = (headers: Record<string, string> = {}) => {
+  const baseHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...headers,
+  };
+  if (API_KEY) {
+    baseHeaders["X-API-Key"] = API_KEY;
+  }
+  return baseHeaders;
+};
 
 export type InferRequest = {
   review_title: string;
@@ -60,7 +72,7 @@ export async function checkHealth(): Promise<{ status: string; hf_status?: strin
   try {
     const res = await fetch(`${BASE_URL}/health`, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
     });
     if (!res.ok) {
       return { status: "error" };
@@ -74,7 +86,7 @@ export async function checkHealth(): Promise<{ status: string; hf_status?: strin
 export async function runInference(req: InferRequest): Promise<InferResponse> {
   const res = await fetch(`${BASE_URL}/predict`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getHeaders(),
     body: JSON.stringify(req),
   });
   if (!res.ok) {
@@ -94,7 +106,7 @@ export async function submitQueueReview(payload: QueueSubmission): Promise<{ ok:
   };
   const res = await fetch(`${BASE_URL}/human-review/${payload.review_id}/label`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getHeaders(),
     body: JSON.stringify(reqBody),
   });
   if (!res.ok) {
@@ -105,7 +117,9 @@ export async function submitQueueReview(payload: QueueSubmission): Promise<{ ok:
 }
 
 export async function getQueueItems(): Promise<any[]> {
-  const res = await fetch(`${BASE_URL}/human-review/queue?status=pending`);
+  const res = await fetch(`${BASE_URL}/human-review/queue?status=pending`, {
+    headers: getHeaders()
+  });
   if (!res.ok) {
     if (res.status === 404 || res.status === 500 || res.status === 503) {
       return [];
@@ -126,7 +140,7 @@ export async function runDriftAnalysis(params: DriftRunParams): Promise<DriftRun
 
   const res = await fetch(`${BASE_URL}/drift/run?${query.toString()}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getHeaders(),
   });
   if (!res.ok) {
     throw new Error(`API Error: ${res.statusText}`);
@@ -135,7 +149,9 @@ export async function runDriftAnalysis(params: DriftRunParams): Promise<DriftRun
 }
 
 export async function getLatestDrift(): Promise<DriftMetric[]> {
-  const res = await fetch(`${BASE_URL}/drift/latest`);
+  const res = await fetch(`${BASE_URL}/drift/latest`, {
+    headers: getHeaders()
+  });
   if (!res.ok) {
     if (res.status === 404 || res.status === 500 || res.status === 503) {
       return [];

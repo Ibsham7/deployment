@@ -23,11 +23,28 @@ load_dotenv()
 from time import perf_counter
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi import FastAPI, HTTPException, Query, Request, status, Depends, Security
+from fastapi.security.api_key import APIKeyHeader
+
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import requests
+
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+def get_api_key(api_key: str = Security(api_key_header)):
+    expected_key = os.getenv("API_KEY")
+    # If no API_KEY is set in environment, allow all (for local dev convenience)
+    if not expected_key:
+        return api_key
+    if api_key == expected_key:
+        return api_key
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Could not validate API Key",
+    )
 
 # Ensure project root is on the path so `router` can be imported when the
 # module is launched from any working directory.
@@ -213,6 +230,7 @@ def _require_firestore_client() -> Any:
 @app.post(
     "/predict",
     response_model=PredictionResponse,
+    dependencies=[Depends(get_api_key)],
     tags=["Prediction"],
     summary="Predict star rating for a review",
     description=(
@@ -288,6 +306,7 @@ async def predict(review: ReviewRequest) -> PredictionResponse:
 @app.post(
     "/predict/batch",
     response_model=BatchPredictionResponse,
+    dependencies=[Depends(get_api_key)],
     tags=["Prediction"],
     summary="Predict star ratings for a batch of reviews",
     description=(
@@ -376,6 +395,7 @@ async def predict_batch(request: BatchReviewRequest) -> BatchPredictionResponse:
 @app.get(
     "/human-review/queue",
     response_model=list[HumanReviewQueueItem],
+    dependencies=[Depends(get_api_key)],
     tags=["Human Review"],
     summary="List queued reviews for human verification",
 )
@@ -399,6 +419,7 @@ async def human_review_queue(
 @app.post(
     "/human-review/{queue_id}/label",
     response_model=HumanLabelResponse,
+    dependencies=[Depends(get_api_key)],
     tags=["Human Review"],
     summary="Submit a human label for a queued review",
 )
@@ -429,6 +450,7 @@ async def label_human_review(queue_id: str, payload: HumanLabelRequest) -> Human
 @app.post(
     "/drift/run",
     response_model=DriftRunResponse,
+    dependencies=[Depends(get_api_key)],
     tags=["Drift"],
     summary="Run drift detection against Firestore inference logs",
 )
@@ -460,6 +482,7 @@ async def drift_run(
 @app.get(
     "/drift/latest",
     response_model=list[DriftMetricResponse],
+    dependencies=[Depends(get_api_key)],
     tags=["Drift"],
     summary="Get latest persisted drift metrics",
 )
