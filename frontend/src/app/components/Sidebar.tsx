@@ -1,4 +1,4 @@
-import { FlaskConical, Sparkles, Inbox, Activity, Zap, X } from "lucide-react";
+import { FlaskConical, Sparkles, Inbox, Activity, Zap, X, LogOut } from "lucide-react";
 
 export type ViewKey = "simulator" | "results" | "queue" | "drift";
 
@@ -14,11 +14,15 @@ export function Sidebar({
   onSelect,
   hasResults,
   onClose,
+  userEmail,
+  onLogout,
 }: {
   active: ViewKey;
   onSelect: (k: ViewKey) => void;
   hasResults: boolean;
   onClose?: () => void;
+  userEmail?: string;
+  onLogout?: () => void;
 }) {
   return (
     <aside
@@ -107,18 +111,70 @@ export function Sidebar({
         })}
       </nav>
 
-      <div
-        className="p-4 m-3 rounded-2xl"
-        style={{ backgroundColor: "#111827", border: "1px solid #374151" }}
-      >
-        <div className="flex items-center gap-2 mb-2">
-          <div
-            className="w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: "#059669", boxShadow: "0 0 8px rgba(5,150,105,0.7)" }}
-          />
-          <span className="text-[11px] tracking-wide" style={{ color: "#9CA3AF" }}>All systems operational</span>
+      {/* User section + System status */}
+      <div className="px-3 pb-3 space-y-2">
+        <div
+          className="p-4 rounded-2xl"
+          style={{ backgroundColor: "#111827", border: "1px solid #374151" }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <div
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: "#059669", boxShadow: "0 0 8px rgba(5,150,105,0.7)" }}
+            />
+            <span className="text-[11px] tracking-wide" style={{ color: "#9CA3AF" }}>All systems operational</span>
+          </div>
         </div>
-        
+
+        {userEmail && (
+          <div
+            className="p-3 rounded-2xl flex items-center gap-3"
+            style={{ backgroundColor: "#111827", border: "1px solid #374151" }}
+          >
+            {/* Avatar */}
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-[12px] font-semibold"
+              style={{
+                background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+                color: "#ffffff",
+              }}
+            >
+              {userEmail.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div
+                className="text-[12px] truncate"
+                style={{ color: "#D1D5DB", fontWeight: 500 }}
+                title={userEmail}
+              >
+                {userEmail}
+              </div>
+              <div className="text-[10px] tracking-wide uppercase" style={{ color: "#6B7280" }}>
+                Authenticated
+              </div>
+            </div>
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="p-1.5 rounded-lg transition-all shrink-0"
+                style={{ border: "1px solid transparent", color: "#6B7280" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#1F2937";
+                  e.currentTarget.style.borderColor = "#374151";
+                  e.currentTarget.style.color = "#EF4444";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "";
+                  e.currentTarget.style.borderColor = "transparent";
+                  e.currentTarget.style.color = "#6B7280";
+                }}
+                title="Sign out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </aside>
   );

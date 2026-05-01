@@ -1,19 +1,31 @@
 import { useState } from "react";
-import { Search, Bell, Menu, X } from "lucide-react";
+import { Search, Menu, X } from "lucide-react";
 import { Toaster } from "sonner";
+import { AuthProvider, useAuth } from "./lib/AuthContext";
+import { LoginPage } from "./components/LoginPage";
 import { Sidebar, ViewKey } from "./components/Sidebar";
 import { SimulatorView, SimulatorRequest } from "./components/SimulatorView";
 import { ResultsView, InferenceResult } from "./components/ResultsView";
 import { QueueView } from "./components/QueueView";
 import { DriftView } from "./components/DriftView";
 import { SplashScreen } from "./components/SplashScreen";
+import { auth, firebaseSignOut } from "./lib/firebase";
 
-export default function App() {
+function AppContent() {
+  const { user, loading: authLoading } = useAuth();
   const [splashDone, setSplashDone] = useState(false);
   const [view, setView] = useState<ViewKey>("simulator");
   const [request, setRequest] = useState<SimulatorRequest | null>(null);
   const [result, setResult] = useState<InferenceResult | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await firebaseSignOut(auth);
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
+  };
 
   const onResult = (req: SimulatorRequest, res: InferenceResult) => {
     setRequest(req);
@@ -27,6 +39,32 @@ export default function App() {
     setSidebarOpen(false);
   };
 
+  // 1. Show loading spinner while Firebase Auth initializes
+  if (authLoading) {
+    return (
+      <div
+        className="fixed inset-0 flex items-center justify-center"
+        style={{ backgroundColor: "#111827" }}
+      >
+        <div
+          className="w-8 h-8 rounded-full border-2"
+          style={{
+            borderColor: "#374151",
+            borderTopColor: "#059669",
+            animation: "spin 0.8s linear infinite",
+          }}
+        />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  // 2. Not logged in → show login page
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  // 3. Logged in → splash screen → app
   return (
     <div
       className="min-h-screen text-[#F9FAFB] relative overflow-hidden"
@@ -64,6 +102,8 @@ export default function App() {
             onSelect={switchView} 
             hasResults={!!result} 
             onClose={() => setSidebarOpen(false)}
+            userEmail={user.email || undefined}
+            onLogout={handleLogout}
           />
         </div>
 
@@ -107,5 +147,13 @@ export default function App() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
