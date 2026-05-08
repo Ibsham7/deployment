@@ -72,7 +72,6 @@ export async function checkHealth(): Promise<{ status: string; hf_status?: strin
   try {
     const res = await fetch(`${BASE_URL}/health`, {
       method: "GET",
-      headers: getHeaders(),
     });
     if (!res.ok) {
       return { status: "error" };

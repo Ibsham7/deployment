@@ -26,5 +26,9 @@ firebase-service-account.json
 # Models (already backed up on Hugging Face)
 models/
 
+# Frontend build outputs
+frontend/build/
+frontend/dist/
+
 # MacOS
 .DS_Store
